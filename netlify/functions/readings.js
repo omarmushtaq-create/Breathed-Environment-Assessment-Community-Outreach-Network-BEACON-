@@ -59,14 +59,16 @@ exports.handler = async function (event) {
 
 // Minimal parser for InfluxDB's annotated CSV response format
 function parseInfluxCsv(csv) {
-  const lines = csv.split('\n').filter((l) => l.trim().length > 0 && !l.startsWith('#'));
+  // Normalize line endings first, so \r doesn't end up glued onto the last field of each row
+  const normalized = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalized.split('\n').filter((l) => l.trim().length > 0 && !l.startsWith('#'));
   if (lines.length < 2) return [];
 
   const header = lines[0].split(',').map((h) => h.trim());
   const rows = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',');
+    const cols = lines[i].split(',').map((c) => c.trim());
     const row = {};
     header.forEach((key, idx) => {
       row[key] = cols[idx];
