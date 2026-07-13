@@ -1,0 +1,8 @@
+{
+  "name": "sensor-dashboard",
+  "version": "1.0.0",
+  "description": "Public dashboard for ZPH02 PM2.5 sensor network",
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}
