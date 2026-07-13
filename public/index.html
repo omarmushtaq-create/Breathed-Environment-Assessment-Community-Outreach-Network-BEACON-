@@ -124,7 +124,7 @@
 // Map each device name (from config.h's DEVICE_NAME) to a real-world location.
 // Add one line here per sensor you deploy.
 const SENSOR_LOCATIONS = {
-  sensor_01: { lat: 42.5279, lon: -70.9286, label: "Sensor 01" },
+  sensor_01: { lat: 41.28800302268698, lon: -72.95426826901249, label: "Sensor 01" },
   // sensor_02: { lat: 42.53, lon: -70.93, label: "Sensor 02" },
 };
 
@@ -135,7 +135,7 @@ function statusFor(pm25) {
   return { label: "Worst", cls: "worst" };
 }
 
-const map = L.map('map').setView([42.5279, -70.9286], 13);
+const map = L.map('map').setView([41.28800302268698, -72.95426826901249], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
