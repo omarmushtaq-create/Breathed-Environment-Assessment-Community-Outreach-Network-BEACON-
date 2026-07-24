@@ -146,6 +146,18 @@
     font-size: 13px;
     font-weight: 500;
   }
+.stat-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .stat-row span.val {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 16px;
+    margin-right: 4px;
+  }
   canvas { max-height: 120px; margin-top: 14px; }
 
   .empty {
@@ -238,8 +250,16 @@ async function refresh() {
         if (!markers[device]) {
           markers[device] = L.marker([loc.lat, loc.lon]).addTo(map);
         }
-        markers[device].bindPopup(`<b>${loc.label}</b><br>${latest.pm25.toFixed(1)} &micro;g/m&sup3; (${status.label})`);
+        markers[device].bindPopup(
+          `<b>${loc.label}</b><br>${latest.pm25.toFixed(1)} &micro;g/m&sup3; (${status.label})` +
+          (latest.temperature !== null && !isNaN(latest.temperature) ? `<br>${latest.temperature.toFixed(1)}&deg;C, ${latest.humidity.toFixed(0)}% RH` : '')
+        );
       }
+
+      const tempStr = latest.temperature !== null && !isNaN(latest.temperature)
+        ? `${latest.temperature.toFixed(1)}&deg;C` : '--';
+      const humStr = latest.humidity !== null && !isNaN(latest.humidity)
+        ? `${latest.humidity.toFixed(0)}%` : '--';
 
       const card = document.createElement('div');
       card.className = 'sensor-card';
@@ -247,6 +267,10 @@ async function refresh() {
         <h3>${loc ? loc.label : device}</h3>
         <div class="status ${status.cls}">${status.label}</div>
         <div class="reading">${latest.pm25.toFixed(1)} <span>&micro;g/m&sup3;</span></div>
+        <div class="stat-row">
+          <div><span class="val">${tempStr}</span>temp</div>
+          <div><span class="val">${humStr}</span>humidity</div>
+        </div>
         <canvas id="chart-${device}"></canvas>
       `;
       grid.appendChild(card);

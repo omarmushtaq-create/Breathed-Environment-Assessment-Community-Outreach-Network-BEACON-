@@ -16,7 +16,8 @@ exports.handler = async function (event) {
     from(bucket: "${INFLUX_BUCKET}")
       |> range(start: -${hours}h)
       |> filter(fn: (r) => r._measurement == "air_quality")
-      |> filter(fn: (r) => r._field == "pm25")
+      |> filter(fn: (r) => r._field == "pm25" or r._field == "temperature" or r._field == "humidity")
+      |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
       |> sort(columns: ["_time"])
   `;
 
@@ -44,7 +45,12 @@ exports.handler = async function (event) {
     for (const row of rows) {
       const device = row.device || 'unknown';
       if (!byDevice[device]) byDevice[device] = [];
-      byDevice[device].push({ time: row._time, pm25: parseFloat(row._value) });
+      byDevice[device].push({
+        time: row._time,
+        pm25: parseFloat(row.pm25),
+        temperature: row.temperature !== undefined ? parseFloat(row.temperature) : null,
+        humidity: row.humidity !== undefined ? parseFloat(row.humidity) : null,
+      });
     }
 
     return {
