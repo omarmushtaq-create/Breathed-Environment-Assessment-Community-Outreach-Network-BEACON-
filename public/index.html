@@ -158,6 +158,59 @@
     font-size: 16px;
     margin-right: 4px;
   }
+  .range-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .range-btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    background: #fff;
+    border: 3px solid var(--ink);
+    box-shadow: var(--shadow-sm);
+    padding: 6px 14px;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .range-btn.active {
+    background: var(--cobalt);
+    color: #fff;
+  }
+  .range-btn:hover { transform: translate(-1px, -1px); }
+
+  .status.offline {
+    background: #999999;
+    color: #fff;
+  }
+  .sensor-card.stale { opacity: 0.55; }
+
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: #444;
+    margin-bottom: 10px;
+  }
+  .trend {
+    font-weight: 700;
+  }
+  .trend.up { color: var(--worst); }
+  .trend.down { color: var(--best); }
+  .trend.flat { color: #666; }
+
+  .reading .raw {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: #555;
+    display: block;
+    margin-top: 2px;
+  }
+
   canvas { max-height: 120px; margin-top: 14px; }
 
   .empty {
@@ -196,13 +249,19 @@
 
   <div>
     <span class="block-label">Readings</span>
+    <div class="range-row" id="rangeRow">
+      <button class="range-btn" data-hours="1">1H</button>
+      <button class="range-btn active" data-hours="6">6H</button>
+      <button class="range-btn" data-hours="24">24H</button>
+      <button class="range-btn" data-hours="168">7D</button>
+    </div>
     <div id="sensorGrid" class="sensor-grid">
       <div class="empty">Loading sensor data&hellip;</div>
     </div>
   </div>
 </main>
 
-<footer>Updates automatically every 60 seconds</footer>
+<footer>Refreshes every 20 seconds &middot; sensors upload every 15 seconds</footer>
 
 <script>
 // Map each device name (from config.h's DEVICE_NAME) to a real-world location.
@@ -226,10 +285,44 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const markers = {};
 const charts = {};
+let currentHours = 6;
+
+// Sensor uploads every 15s; if we haven't heard from a device in a while, flag it as offline
+const STALE_AFTER_MS = 90 * 1000;
+
+function average(nums) {
+  const valid = nums.filter(n => !isNaN(n));
+  if (valid.length === 0) return NaN;
+  return valid.reduce((a, b) => a + b, 0) / valid.length;
+}
+
+function timeAgo(ms) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  return `${h}h ago`;
+}
+
+function trendArrow(recentAvg, priorAvg) {
+  if (isNaN(priorAvg) || isNaN(recentAvg)) return { symbol: '', cls: 'flat' };
+  const diff = recentAvg - priorAvg;
+  if (Math.abs(diff) < 1) return { symbol: '\u2013', cls: 'flat' };
+  return diff > 0 ? { symbol: '\u25B2', cls: 'up' } : { symbol: '\u25BC', cls: 'down' };
+}
+
+document.getElementById('rangeRow').addEventListener('click', (e) => {
+  if (!e.target.matches('.range-btn')) return;
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  currentHours = parseInt(e.target.dataset.hours, 10);
+  refresh();
+});
 
 async function refresh() {
   try {
-    const res = await fetch('/.netlify/functions/readings?hours=24');
+    const res = await fetch(`/.netlify/functions/readings?hours=${currentHours}`);
     const data = await res.json();
     const devices = data.devices || {};
     const grid = document.getElementById('sensorGrid');
@@ -243,16 +336,31 @@ async function refresh() {
 
     for (const [device, readings] of Object.entries(devices)) {
       const latest = readings[readings.length - 1];
-      const status = statusFor(latest.pm25);
       const loc = SENSOR_LOCATIONS[device];
+
+      // Smooth the headline number using the last few readings, so a single noisy
+      // sample doesn't swing the displayed status back and forth
+      const recentSlice = readings.slice(-5);
+      const priorSlice = readings.slice(-10, -5);
+      const smoothedPm25 = average(recentSlice.map(r => r.pm25));
+      const priorAvg = average(priorSlice.map(r => r.pm25));
+      const trend = trendArrow(smoothedPm25, priorAvg);
+
+      const msSinceUpdate = Date.now() - new Date(latest.time).getTime();
+      const isStale = msSinceUpdate > STALE_AFTER_MS;
+
+      const status = isStale
+        ? { label: "Offline", cls: "offline" }
+        : statusFor(smoothedPm25);
 
       if (loc) {
         if (!markers[device]) {
           markers[device] = L.marker([loc.lat, loc.lon]).addTo(map);
         }
         markers[device].bindPopup(
-          `<b>${loc.label}</b><br>${latest.pm25.toFixed(1)} &micro;g/m&sup3; (${status.label})` +
-          (latest.temperature !== null && !isNaN(latest.temperature) ? `<br>${latest.temperature.toFixed(1)}&deg;C, ${latest.humidity.toFixed(0)}% RH` : '')
+          `<b>${loc.label}</b><br>${smoothedPm25.toFixed(1)} &micro;g/m&sup3; (${status.label})` +
+          (latest.temperature !== null && !isNaN(latest.temperature) ? `<br>${latest.temperature.toFixed(1)}&deg;C, ${latest.humidity.toFixed(0)}% RH` : '') +
+          `<br><small>Updated ${timeAgo(msSinceUpdate)}</small>`
         );
       }
 
@@ -262,11 +370,17 @@ async function refresh() {
         ? `${latest.humidity.toFixed(0)}%` : '--';
 
       const card = document.createElement('div');
-      card.className = 'sensor-card';
+      card.className = 'sensor-card' + (isStale ? ' stale' : '');
       card.innerHTML = `
+        <div class="meta-row">
+          <span>Updated ${timeAgo(msSinceUpdate)}</span>
+          <span class="trend ${trend.cls}">${trend.symbol}</span>
+        </div>
         <h3>${loc ? loc.label : device}</h3>
         <div class="status ${status.cls}">${status.label}</div>
-        <div class="reading">${latest.pm25.toFixed(1)} <span>&micro;g/m&sup3;</span></div>
+        <div class="reading">${smoothedPm25.toFixed(1)} <span>&micro;g/m&sup3;</span>
+          <span class="raw">latest sample: ${latest.pm25.toFixed(1)}</span>
+        </div>
         <div class="stat-row">
           <div><span class="val">${tempStr}</span>temp</div>
           <div><span class="val">${humStr}</span>humidity</div>
@@ -297,16 +411,20 @@ async function refresh() {
               data: values,
               borderColor: '#111111',
               backgroundColor: 'transparent',
-              tension: 0,
+              tension: 0.15,
               pointRadius: 0,
-              borderWidth: 3,
+              borderWidth: 2,
             }],
           },
           options: {
             responsive: true,
             plugins: { legend: { display: false } },
             scales: {
-              x: { display: false },
+              x: {
+                display: true,
+                ticks: { font: { size: 9, family: 'IBM Plex Mono' }, maxTicksLimit: 6, autoSkip: true },
+                grid: { display: false },
+              },
               y: {
                 display: true,
                 ticks: { font: { size: 10, family: 'IBM Plex Mono' } },
@@ -324,7 +442,7 @@ async function refresh() {
 }
 
 refresh();
-setInterval(refresh, 60000);
+setInterval(refresh, 20000);
 </script>
 
 </body>
