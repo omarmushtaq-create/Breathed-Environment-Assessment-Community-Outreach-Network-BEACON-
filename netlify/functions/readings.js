@@ -15,7 +15,7 @@ exports.handler = async function (event) {
   const flux = `
     from(bucket: "${INFLUX_BUCKET}")
       |> range(start: -${hours}h)
-      |> filter(fn: (r) => r._measurement == "air_quality")
+      |> filter(fn: (r) => r._measurement == "environment")
       |> filter(fn: (r) => r._field == "pm25" or r._field == "temperature" or r._field == "humidity")
       |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
       |> sort(columns: ["_time"])
